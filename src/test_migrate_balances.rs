@@ -21,7 +21,7 @@ use soroban_sdk::{
 const AMOUNT: i128 = 2_500_000;
 const TIMEOUT: u32 = 1_000;
 
-/// Initialise two OracleEscrow contracts sharing the same token and return
+/// Initialise two Averis contracts sharing the same token and return
 /// (token, admin, platform, src_id, dst_id). Leaves mock_all_auths on.
 fn setup_pair() -> (Env, Address, Address, Address, Address, Address) {
     let env = Env::new_with_config(EnvTestConfig {
@@ -34,14 +34,14 @@ fn setup_pair() -> (Env, Address, Address, Address, Address, Address) {
     let admin = Address::generate(&env);
     let platform = Address::generate(&env);
 
-    let src = env.register(OracleEscrow, ());
-    let dst = env.register(OracleEscrow, ());
+    let src = env.register(Averis, ());
+    let dst = env.register(Averis, ());
 
-    OracleEscrowClient::new(&env, &src).initialize(&admin, &token, &platform, &TIMEOUT);
-    OracleEscrowClient::new(&env, &dst).initialize(&admin, &token, &platform, &TIMEOUT);
+    AverisClient::new(&env, &src).initialize(&admin, &token, &platform, &TIMEOUT);
+    AverisClient::new(&env, &dst).initialize(&admin, &token, &platform, &TIMEOUT);
 
     // Authorise the source to push migrations into the destination.
-    OracleEscrowClient::new(&env, &dst).set_migration_source(&src);
+    AverisClient::new(&env, &dst).set_migration_source(&src);
 
     (env, token, admin, platform, src, dst)
 }
@@ -58,6 +58,7 @@ fn participant_index_tracks_first_stake() {
     assert_eq!(c.get_participant_count(), 0);
 
     let worker = Address::generate(&f.env);
+    soroban_sdk::token::StellarAssetClient::new(&f.env, &f.token_address).mint(&worker, &1_000_000);
     f.env.mock_all_auths();
     c.stake(&worker, &1_000_000);
 
@@ -126,8 +127,8 @@ fn participant_index_tracks_worker_credited_via_resolve() {
 #[test]
 fn migrate_balances_moves_stake_owed_and_balance_atomically() {
     let (env, token, _admin, _platform, src, dst) = setup_pair();
-    let src_c = OracleEscrowClient::new(&env, &src);
-    let dst_c = OracleEscrowClient::new(&env, &dst);
+    let src_c = AverisClient::new(&env, &src);
+    let dst_c = AverisClient::new(&env, &dst);
     let sac = token::StellarAssetClient::new(&env, &token);
 
     // Worker: stake + owed (via resolve).
@@ -182,8 +183,8 @@ fn migrate_balances_moves_stake_owed_and_balance_atomically() {
 #[test]
 fn migration_does_not_double_credit_or_drop_a_balance_under_partial_failure() {
     let (env, token, _admin, _platform, src, dst) = setup_pair();
-    let src_c = OracleEscrowClient::new(&env, &src);
-    let dst_c = OracleEscrowClient::new(&env, &dst);
+    let src_c = AverisClient::new(&env, &src);
+    let dst_c = AverisClient::new(&env, &dst);
     let sac = token::StellarAssetClient::new(&env, &token);
 
     let w1 = Address::generate(&env);
@@ -226,7 +227,7 @@ fn migration_does_not_double_credit_or_drop_a_balance_under_partial_failure() {
 #[test]
 fn migrate_balances_no_op_for_address_with_no_entries() {
     let (env, _token, _admin, _platform, src, _dst_id) = setup_pair();
-    let src_c = OracleEscrowClient::new(&env, &src);
+    let src_c = AverisClient::new(&env, &src);
 
     // An address that has never interacted with the contract.
     let stranger = Address::generate(&env);

@@ -4,7 +4,8 @@
 
 use super::*;
 use crate::test::{client, setup, token_client, AMOUNT};
-use soroban_sdk::{testutils::Address as _, Address, Vec};
+use crate::ContractError;
+use soroban_sdk::{testutils::Address as _, Address, BytesN, Vec};
 
 #[test]
 fn quorum_bounds_default_to_unbounded_when_never_configured() {

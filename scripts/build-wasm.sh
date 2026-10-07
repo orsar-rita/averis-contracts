@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build the OracleEscrow contract WASM and (re)generate the multi-language
+# Build the Averis contract WASM and (re)generate the multi-language
 # client bindings that live under `bindings/`.
 #
 # The bindings are generated from the contract's XDR spec, which is embedded in
@@ -18,7 +18,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WASM_OUT="${ROOT_DIR}/target/wasm32-unknown-unknown/release/oracle_escrow.wasm"
+WASM_OUT="${ROOT_DIR}/target/wasm32-unknown-unknown/release/averis.wasm"
 BINDINGS_DIR="${ROOT_DIR}/bindings"
 
 # Languages we ship raw call/type bindings for. Each entry is a directory under

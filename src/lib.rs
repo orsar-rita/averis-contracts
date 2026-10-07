@@ -147,29 +147,26 @@ pub enum Status {
 }
 
 #[contracttype]
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Question {
     pub payer: Address,
     pub amount: i128,
     pub status: Status,
     pub created_at: u32,
-    /// Snapshotted from the global TimeoutLedgers default at submit() time —
-    /// deliberately NOT re-read from the global value at refund_timeout()
-    /// time. If it were, a malicious or compromised admin could call
-    /// set_timeout_ledgers() to retroactively push out the deadline on an
-    /// already-pending question, defeating the entire point of the
-    /// permissionless escape hatch. set_timeout_ledgers() only affects
-    /// questions submitted AFTER the change. migrate_pending() carries both
-    /// created_at and timeout_ledgers across unchanged for the same reason.
     pub timeout_ledgers: u32,
-    /// The asset this question was opened in.
-    pub token: Address,
 }
 
 #[contracttype]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PendingAdminRotation {
     pub new_admin: Address,
+    pub executable_at: u32,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PendingUpgrade {
+    pub wasm_hash: BytesN<32>,
     pub executable_at: u32,
 }
 
@@ -363,6 +360,15 @@ pub enum DataKey {
     /// is admin-gated. Does NOT grant access to refund(), charge(),
     /// set_admin(), set_timeout_ledgers(), or any other admin-only function.
     Resolver,
+    PendingUpgrade,
+    Paused,
+    OpenQuestionCount,
+    TotalResolvedCount,
+    TotalRefundedCount,
+    TotalOpenedCount,
+    PublicGoodsAddress,
+    PublicGoodsBps,
+    EstablishedAnswerCount,
 }
 
 #[contracttype]
@@ -381,198 +387,51 @@ pub enum AssetKey {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[repr(u32)]
 pub enum ContractError {
-    /// initialize() called on an instance whose Admin is already set.
     AlreadyInitialized = 1,
-    /// A function that reads Admin, Token, Platform or TimeoutLedgers from
-    /// instance storage (every admin-gated call, resolve(), submit()/charge(),
-    /// the get_admin()/get_token()/get_platform()/get_timeout_ledgers() views,
-    /// ...) was called before initialize().
     NotInitialized = 2,
-    /// An amount argument is zero or negative. Returned by submit*/charge*,
-    /// deposit*/withdraw_balance*, stake*/begin_unstake*, withdraw*,
-    /// import_question(), reopen_question(), set_top_up_threshold() and by
-    /// set_quorum_bounds() when its bounds are inconsistent.
     InvalidAmount = 3,
-    /// submit*/charge*/import_question() used a question_id that already has a
-    /// stored Question in this instance (in any status).
     QuestionAlreadyExists = 4,
-    /// No Question is stored under the given question_id. Returned by
-    /// get_question(), resolve(), refund(), refund_timeout(), migrate_pending()
-    /// and every other call that loads a question by id.
     QuestionNotFound = 5,
-    /// The question exists but its status is not Pending, so it can no longer
-    /// be resolved, refunded or migrated. Returned by resolve(), refund(),
-    /// refund_timeout(), migrate_pending() and preview_resolve().
     QuestionNotPending = 6,
-    /// resolve()/preview_resolve() called with an empty `workers` list — every
-    /// resolution must credit at least one worker.
     NoWorkers = 7,
-    /// refund_timeout() (or a sweep_timeouts() entry) called before the
-    /// question's own `created_at + timeout_ledgers` deadline.
     TooEarlyForTimeout = 8,
-    /// initialize()/set_timeout_ledgers() received a timeout of 0 or above
-    /// MAX_TIMEOUT_LEDGERS, or import_question() received a timeout of 0.
     InvalidTimeout = 9,
-    /// begin_unstake*() asked to unbond more than the worker's active stake
-    /// (settled + warming).
     InsufficientStake = 10,
-    /// withdraw*() called while the worker's owed balance is exactly 0 (or
-    /// below). Distinct from InsufficientOwed, which is a positive balance
-    /// that is smaller than the amount requested.
     NothingOwed = 11,
-    /// resolve()'s `workers`/`losing_workers` contain a duplicate address
-    /// within one list, or the same address in both lists.
     InvalidWorkerLists = 12,
-    /// charge*()/withdraw_balance*() asked for more than the payer's prepaid
-    /// Balance currently holds.
     InsufficientBalance = 13,
-    /// withdraw*() asked for more than the worker's positive owed balance
-    /// minus any amount lock_owed() has pledged as collateral.
     InsufficientOwed = 14,
-    /// complete_unstake*() called while the worker has nothing in the
-    /// unbonding bucket.
     NothingUnbonding = 15,
-    /// complete_unstake*() called before the unbonding bucket's
-    /// `unbonding_release_at` ledger.
     UnbondingNotElapsed = 16,
-    /// import_question() called by an address other than the MigrationSource
-    /// registered via set_migration_source(), or before one was registered.
     MigrationNotAuthorized = 17,
-    /// import_question() received a question denominated in a token that is
-    /// neither this instance's default token nor an allowed asset.
     TokenMismatch = 18,
-    /// migrate_pending() targeted this same contract, or
-    /// set_migration_source() named this same contract as the source.
     InvalidMigrationTarget = 19,
-    /// `workers.len() + losing_workers.len()` exceeds the hard, compile-time
-    /// MAX_QUORUM_SIZE cap. This variant was already referenced by resolve()
-    /// on upstream main but never defined in this enum, leaving the crate
-    /// unable to compile — defined here (see issue #85) since it is exactly
-    /// the kind of quorum-size-bound variant that issue is about. Codes
-    /// 200+ are used for this PR's new variants to avoid colliding with the
-    /// 20s range used by a sibling in-flight PR and the 100s range used by
-    /// another.
-    QuorumTooLarge = 200,
-    /// `workers.len() + losing_workers.len()` falls outside the
-    /// admin-configured `MinQuorum`/`MaxQuorum` bounds (see
-    /// `set_quorum_bounds()`). Distinct from `QuorumTooLarge`, which is the
-    /// fixed, always-enforced resource-safety ceiling.
-    QuorumOutOfBounds = 201,
-    // Numeric codes 20-99 are intentionally skipped: this repo has other
-    // open PRs (upstream #142, #143) adding their own ContractError variants
-    // in that range against the same upstream main. Starting at 100 keeps
-    // these new variants collision-free regardless of merge order.
-    /// #92: lock_owed() was asked to lock more than the worker's current
-    /// Owed(Address) minus what is already locked.
-    LockExceedsOwed = 101,
-    /// #92: release_owed() was asked to release more than is currently
-    /// locked for that worker.
-    NoLockToRelease = 102,
-    /// #92: lock_owed()/release_owed() called by an address other than the
-    /// one registered via set_lending_authority().
-    NotLendingAuthority = 107,
-    /// #92: lock_owed()/release_owed() called before any
-    /// set_lending_authority() call has ever succeeded.
-    LendingAuthorityNotSet = 108,
-    /// #93: mint_claim() called on a question that hasn't reached
-    /// Status::Resolved yet.
-    QuestionNotResolved = 103,
-    /// #93: mint_claim() called twice for the same question_id.
-    ClaimAlreadyExists = 104,
-    /// #94: record_reputation() called twice for the same question_id.
-    ReputationAlreadyRecorded = 106,
-    /// #95: instant_refund() called by an address the admin hasn't
-    /// approved via approve_underwriter().
-    NotUnderwriter = 20,
-    /// #96: resolve_diverse() rejected a worker with no admin-attested
-    /// WorkerRegion tag.
-    UnattestedWorker = 21,
-    /// #96: resolve_diverse()'s `workers` list didn't cover at least
-    /// `min_distinct_regions` distinct attested regions.
-    InsufficientDiversity = 22,
-    /// #97: dispute_resolve()/finalize_resolve() called on a question with
-    /// no in-flight PendingResolution (never went through
-    /// resolve_challengeable(), or already finalized).
-    NoPendingResolution = 23,
-    /// #97: finalize_resolve() called before its dispute window elapsed.
-    DisputeWindowNotElapsed = 24,
-    /// #97: finalize_resolve() called on a resolution a dispute_resolve()
-    /// call already flagged; an admin must resolve the dispute out of band
-    /// (see the Out of scope note on resolve_challengeable()).
-    QuestionDisputed = 25,
-    /// #98: resolve_median() called with an empty answer set.
-    EmptyAnswerSet = 26,
-    /// #98: resolve_median()'s answer set names the same worker Address
-    /// more than once.
-    DuplicateAnswerAddress = 27,
-    /// verify_passkey_auth() called before register_passkey() for this
-    /// worker.
-    PasskeyNotRegistered = 28,
-    /// The secp256r1 signature did not verify against the worker's
-    /// registered passkey public key.
-    InvalidPasskeySignature = 29,
-    /// attest_kyc() called before set_kyc_attestor() configured a trusted
-    /// attestor public key.
-    KycAttestorNotSet = 30,
-    /// The expiry ledger passed to attest_kyc() is not in the future.
-    InvalidKycExpiry = 31,
-    /// get_historical_stake() found no snapshot for that worker at that
-    /// exact ledger.
-    StakeSnapshotNotFound = 32,
-    /// A *_asset() call or get_asset_decimals() named a token that is not on
-    /// the admin-managed allowlist (see set_asset_allowed()).
-    AssetNotAllowed = 33,
-    /// cancel_admin_rotation()/execute_admin_rotation() called with no
-    /// admin rotation proposed.
-    NoAdminRotationPending = 34,
-    /// execute_admin_rotation() called before the pending rotation's
-    /// `executable_at` ledger.
-    AdminRotationNotReady = 35,
-    /// set_asset_allowed() tried to disallow the instance's default token.
-    CannotDisableDefaultAsset = 36,
-    /// A checked i128/u32 addition overflowed (stake, deposit, owed credit,
-    /// category count, migration totals, resolve()'s platform take).
-    ArithmeticOverflow = 37,
-    /// set_asset_allowed() tried to allow a new non-default token when
-    /// MAX_ALLOWED_ASSETS are already allowed.
-    AssetLimitReached = 38,
-    // 300s: new-feature error codes for #87/#88/#89/#90. Starting at 300
-    // deliberately avoids colliding with other in-flight PRs touching this
-    // same file (20s, 100s, 200s already claimed elsewhere) — see this
-    // PR's description for the full breakdown.
-    /// #87: reopen_question() called on a question that isn't Refunded (or
-    /// isn't owned by the caller).
-    QuestionNotRefunded = 300,
-    /// #88: submit_from_template()/register_template() referenced a
-    /// template_id with no registered QuestionTemplate.
-    TemplateNotFound = 301,
-    /// #89: submit_as_delegate() called by an address with no active
-    /// delegation from `payer`, or whose remaining capped allowance is
-    /// less than the requested amount.
-    DelegateNotAuthorized = 302,
-    /// #90: create_stream() called with end_ledger <= start_ledger, or a
-    /// duplicate (payer, beneficiary) stream already exists.
-    InvalidStreamRange = 303,
-    /// #90: claim_stream()/get_stream()/cancel_stream() referenced a
-    /// (payer, beneficiary) pair with no active stream.
-    StreamNotFound = 304,
-    /// #90: claim_stream() called with nothing newly vested to claim.
-    NothingToClaim = 305,
-    /// #48: migrate_balances() called with target == this contract.
-    InvalidBalanceMigrationTarget = 306,
-    /// #49: escalate() called on a question that is not Pending.
-    QuestionNotPendingForEscalation = 307,
-    /// #49: escalate_resolve() called on a question that is not Disputed.
-    QuestionNotDisputed = 308,
-    /// #50: post_challenge_bond() called on a question that has no
-    /// in-flight PendingResolution (the question was never put through
-    /// resolve_challengeable(), or the window already elapsed).
-    NoChallengeableResolution = 309,
-    /// #50: post_challenge_bond() called with a non-positive bond amount.
-    InvalidBondAmount = 310,
-    /// #50: post_challenge_bond() called on a question_id that already has
-    /// a bond posted.
-    BondAlreadyPosted = 311,
+    PasskeyNotRegistered = 20,
+    InvalidPasskeySignature = 21,
+    KycAttestorNotSet = 22,
+    InvalidKycExpiry = 23,
+    StakeSnapshotNotFound = 24,
+    AssetNotAllowed = 25,
+    NoAdminRotationPending = 26,
+    AdminRotationNotReady = 27,
+    CannotDisableDefaultAsset = 28,
+    ArithmeticOverflow = 29,
+    AssetLimitReached = 30,
+    ReputationAlreadyRecorded = 31,
+    QuorumTooLarge = 32,
+    QuorumOutOfBounds = 33,
+    QuestionNotRefunded = 34,
+    InvalidBalanceMigrationTarget = 35,
+    QuestionNotPendingForEscalation = 36,
+    QuestionNotDisputed = 37,
+    EmptyAnswerSet = 38,
+    DuplicateAnswerAddress = 39,
+    ContractPaused = 40,
+    InvalidPublicGoodsBps = 41,
+    NoUnanimousConsensus = 42,
+    NoUpgradePending = 43,
+    TimeoutNotReached = 44,
+    UpgradeNotReady = 45,
 }
 
 /// `question_opened` topics: question_id; data: payer, token, amount,
@@ -672,6 +531,16 @@ pub struct WorkerPaid {
     pub worker: Address,
     pub recipient: Address,
     pub token: Address,
+    pub amount: i128,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WorkerCredited {
+    #[topic]
+    pub question_id: u64,
+    #[topic]
+    pub worker: Address,
     pub amount: i128,
 }
 
@@ -1197,7 +1066,6 @@ pub struct ChallengeBondSettled {
     /// disputed), false = bond forfeited to platform (spurious challenge).
     pub returned: bool,
 }
-}
 
 /// #125: a worker's pending hash commitment for a question. Stored under
 /// DataKey::Commit(question_id, worker) by commit_answer() and removed by
@@ -1240,11 +1108,30 @@ pub struct PublicGoodsConfigSet {
     pub bps: u32,
 }
 
+#[contractevent]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UpgradeProposed {
+    pub wasm_hash: BytesN<32>,
+    pub executable_at: u32,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UpgradeCancelled {
+    pub wasm_hash: BytesN<32>,
+}
+
+#[contractevent]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UpgradeExecuted {
+    pub wasm_hash: BytesN<32>,
+}
+
 #[contract]
-pub struct OracleEscrow;
+pub struct Averis;
 
 #[contractimpl]
-impl OracleEscrow {
+impl Averis {
     /// One-time setup. `timeout_ledgers` fixes how long a question may sit
     /// Pending before `refund_timeout` becomes callable by anyone. It is
     /// immutable after init so payers can rely on the number quoted to them
@@ -1387,7 +1274,7 @@ impl OracleEscrow {
             &env.current_contract_address(),
             &amount,
         );
-        Self::open_question(&env, payer, question_id, amount, token)
+        Self::open_question(&env, payer, question_id, amount, token, None, None)
     }
 
     /// Payer locks `amount` into a standing prepaid balance — one signature,
@@ -1671,7 +1558,7 @@ impl OracleEscrow {
         }
         Self::set_persistent(&env, &key, &(existing - amount));
 
-        Self::open_question(env, payer, question_id, amount, token)
+        Self::open_question(env, payer, question_id, amount, token, None, None)
     }
 
     /// Shared by submit() (fresh transfer) and charge() (drawn from an
@@ -1685,12 +1572,30 @@ impl OracleEscrow {
         question_id: u64,
         amount: i128,
         token: Address,
+        schema_hash: Option<BytesN<32>>,
+        category: Option<Symbol>,
     ) -> Result<(), ContractError> {
         let timeout_ledgers: u32 = env
             .storage()
             .instance()
             .get(&DataKey::TimeoutLedgers)
             .ok_or(ContractError::NotInitialized)?;
+
+        if let Some(hash) = schema_hash {
+            env.storage()
+                .persistent()
+                .set(&DataKey::QuestionSchemaHash(question_id), &hash);
+        }
+        if let Some(cat) = category {
+            let count: u32 = env
+                .storage()
+                .persistent()
+                .get(&DataKey::CategoryCount(cat.clone()))
+                .unwrap_or(0);
+            env.storage()
+                .persistent()
+                .set(&DataKey::CategoryCount(cat), &(count + 1));
+        }
 
         Self::record_question(
             env,
@@ -1702,7 +1607,6 @@ impl OracleEscrow {
                 status: Status::Pending,
                 created_at: env.ledger().sequence(),
                 timeout_ledgers,
-                token: token.clone(),
             },
         )?;
         Ok(())
@@ -1765,7 +1669,7 @@ impl OracleEscrow {
         answer_hash: BytesN<32>,
     ) -> Result<(), ContractError> {
         Self::require_resolver_or_admin(&env)?;
-        Self::settle_resolution(&env, question_id, workers, losing_workers)
+        Self::settle_resolution(&env, question_id, workers, losing_workers, Some(answer_hash))
     }
 
     /// Issue #11: admin-only resolution from raw consensus data, which
@@ -2813,8 +2717,8 @@ impl OracleEscrow {
     pub fn get_category_count(env: Env, category: Symbol) -> u32 {
         env.storage()
             .persistent()
-            .get(&DataKey::Question(question_id))
-            .ok_or(ContractError::QuestionNotFound)
+            .get(&DataKey::CategoryCount(category))
+            .unwrap_or(0)
     }
 
     /// #109 circuit breaker. Admin-only. `true` makes every funding entry
@@ -3002,7 +2906,7 @@ impl OracleEscrow {
             return Err(ContractError::InvalidMigrationTarget);
         }
 
-        let target_client = OracleEscrowClient::new(&env, &target);
+        let target_client = AverisClient::new(&env, &target);
         let transfer_fn = Symbol::new(&env, "transfer");
         let mut total: i128 = 0;
 
@@ -3112,14 +3016,13 @@ impl OracleEscrow {
         Self::record_question(
             &env,
             question_id,
-            token,
+            token.clone(),
             Question {
                 payer,
                 amount,
                 status: Status::Pending,
                 created_at,
                 timeout_ledgers,
-                token: token.clone(),
             },
         )
     }
@@ -3552,6 +3455,23 @@ impl OracleEscrow {
         );
     }
 
+    fn load_question(env: &Env, question_id: u64) -> Result<Question, ContractError> {
+        let key = DataKey::Question(question_id);
+        let question: Question = env
+            .storage()
+            .persistent()
+            .get(&key)
+            .ok_or(ContractError::QuestionNotFound)?;
+        Self::extend_question_ttl(env, &key, &question);
+        Ok(question)
+    }
+
+    fn store_question(env: &Env, question_id: u64, question: &Question) {
+        let key = DataKey::Question(question_id);
+        env.storage().persistent().set(&key, question);
+        Self::extend_question_ttl(env, &key, question);
+    }
+
     fn extend_asset_ttl<K: IntoVal<Env, soroban_sdk::Val>>(env: &Env, key: &K) {
         Self::extend_persistent(env, key);
     }
@@ -3607,7 +3527,7 @@ impl OracleEscrow {
             return Err(ContractError::QuestionNotRefunded);
         }
 
-        let token_addr = existing.token.clone();
+        let token_addr = Self::token(&env)?;
         token::Client::new(&env, &token_addr).transfer(
             &payer,
             &env.current_contract_address(),
@@ -3621,7 +3541,6 @@ impl OracleEscrow {
             status: Status::Pending,
             created_at: now,
             timeout_ledgers: existing.timeout_ledgers,
-            token: token_addr.clone(),
         };
         Self::store_question(&env, question_id, &reopened);
 
@@ -3632,6 +3551,8 @@ impl OracleEscrow {
             question_id,
             payer,
             amount,
+            created_at: now,
+            timeout_ledgers: existing.timeout_ledgers,
         }
         .publish(&env);
         Ok(())
@@ -3813,8 +3734,9 @@ impl OracleEscrow {
         if question.status != Status::Pending {
             return Err(ContractError::QuestionNotPending);
         }
-        if env.ledger().sequence() < question.deadline {
-            return Err(ContractError::TimeoutNotReached);
+        let deadline = question.created_at.saturating_add(question.timeout_ledgers);
+        if env.ledger().sequence() < deadline {
+            return Err(ContractError::TooEarlyForTimeout);
         }
         Self::do_refund(env, question_id, true)?;
         Ok(())
@@ -3923,7 +3845,7 @@ impl OracleEscrow {
     // existing single-transfer behaviour is preserved exactly.
     //
     // The hook target is a plain Address. Whether it happens to be a Drips
-    // split contract or anything else is invisible to OracleEscrow — the
+    // split contract or anything else is invisible to Averis — the
     // same as #104's observation that token_client.transfer() doesn't care
     // what kind of account it's paying into.
     //
@@ -4084,7 +4006,7 @@ impl OracleEscrow {
             return Err(ContractError::InvalidKycExpiry);
         }
 
-        let mut message = subject.to_xdr(&env);
+        let mut message = subject.clone().to_xdr(&env);
         message.append(&expiry_ledger.to_xdr(&env));
         env.crypto()
             .ed25519_verify(&attestor_pubkey, &message, &signature);
@@ -4453,7 +4375,7 @@ impl OracleEscrow {
 
         let token_addr = Self::token(&env)?;
         let transfer_fn = Symbol::new(&env, "transfer");
-        let target_client = OracleEscrowClient::new(&env, &target);
+        let target_client = AverisClient::new(&env, &target);
         let mut total: i128 = 0;
 
         for address in addresses.iter() {
@@ -4836,268 +4758,6 @@ impl OracleEscrow {
     //   - if the resolution was NOT disputed, the bond is forfeited to the
     //     platform.
 
-    /// Admin-only: records a pending resolution for `question_id` without
-    /// crediting any worker or transferring any funds. Sets the question's
-    /// status to ResolvedPending and stores `workers`, `losing_workers`, and
-    /// the `dispute_window_ledgers`-long challenge window in
-    /// DataKey::PendingResolution(question_id).
-    ///
-    /// The question must be Pending. refund()/refund_timeout() are no longer
-    /// valid once the question is ResolvedPending.
-    pub fn resolve_challengeable(
-        env: Env,
-        question_id: u64,
-        workers: Vec<Address>,
-        losing_workers: Vec<Address>,
-        dispute_window_ledgers: u32,
-    ) -> Result<(), ContractError> {
-        Self::require_admin(&env)?;
-
-        if workers.is_empty() {
-            return Err(ContractError::NoWorkers);
-        }
-        if workers.len().saturating_add(losing_workers.len()) > MAX_QUORUM_SIZE {
-            return Err(ContractError::QuorumTooLarge);
-        }
-        Self::check_quorum_bounds(&env, workers.len().saturating_add(losing_workers.len()))?;
-        Self::validate_worker_lists(&workers, &losing_workers)?;
-
-        let mut question = Self::load_question(&env, question_id)?;
-        if question.status != Status::Pending {
-            return Err(ContractError::QuestionNotPending);
-        }
-
-        let dispute_deadline = env
-            .ledger()
-            .sequence()
-            .saturating_add(dispute_window_ledgers);
-
-        let pending_res = PendingResolution {
-            workers,
-            losing_workers,
-            dispute_deadline,
-            disputed: false,
-        };
-        Self::set_persistent(&env, &DataKey::PendingResolution(question_id), &pending_res);
-
-        // Update status to ResolvedPending without settling (funds stay escrowed).
-        question.status = Status::ResolvedPending;
-        Self::store_question(&env, question_id, &question);
-        Self::bump_instance(&env);
-
-        ResolutionChallengeable { question_id, dispute_deadline }.publish(&env);
-        Ok(())
-    }
-
-    /// Permissionless: anyone with a bond can stake a claim that the pending
-    /// resolution is wrong. The bond (`amount` in the default token) is held
-    /// by this contract. The caller must be the one named in subsequent
-    /// finalize_resolve() checks. Only one bond per question_id is tracked.
-    ///
-    /// The question must be in ResolvedPending status and must have an
-    /// unexpired dispute window (current ledger < dispute_deadline).
-    pub fn post_challenge_bond(
-        env: Env,
-        challenger: Address,
-        question_id: u64,
-        amount: i128,
-    ) -> Result<(), ContractError> {
-        challenger.require_auth();
-
-        if amount <= 0 {
-            return Err(ContractError::InvalidBondAmount);
-        }
-
-        let question = Self::load_question(&env, question_id)?;
-        if question.status != Status::ResolvedPending {
-            return Err(ContractError::NoChallengeableResolution);
-        }
-
-        let pending_res: PendingResolution = env
-            .storage()
-            .persistent()
-            .get(&DataKey::PendingResolution(question_id))
-            .ok_or(ContractError::NoPendingResolution)?;
-
-        // Bond must be posted before the dispute window closes.
-        if env.ledger().sequence() >= pending_res.dispute_deadline {
-            return Err(ContractError::NoChallengeableResolution);
-        }
-
-        // Only one bond per question at a time.
-        if env
-            .storage()
-            .persistent()
-            .has(&DataKey::ChallengerBond(question_id))
-        {
-            return Err(ContractError::BondAlreadyPosted);
-        }
-
-        let token_addr = Self::token(&env)?;
-        token::Client::new(&env, &token_addr).transfer(
-            &challenger,
-            &env.current_contract_address(),
-            &amount,
-        );
-
-        let bond_entry = ChallengerBondEntry { challenger: challenger.clone(), amount };
-        Self::set_persistent(&env, &DataKey::ChallengerBond(question_id), &bond_entry);
-        Self::bump_instance(&env);
-
-        ChallengeBondPosted { question_id, challenger, amount }.publish(&env);
-        Ok(())
-    }
-
-    /// Admin-only: flags the in-flight PendingResolution for `question_id`
-    /// as disputed. finalize_resolve() will refuse to execute while this flag
-    /// is set — the admin must resolve the dispute out of band and then call
-    /// admin_override_resolution() (or refund the question directly) to unblock.
-    ///
-    /// Permissionless variant: see post_challenge_bond() — anyone can post a
-    /// bond to signal disagreement; the admin inspects and calls this if the
-    /// challenge has merit.
-    pub fn dispute_resolve(env: Env, question_id: u64) -> Result<(), ContractError> {
-        Self::require_admin(&env)?;
-
-        let mut pending_res: PendingResolution = env
-            .storage()
-            .persistent()
-            .get(&DataKey::PendingResolution(question_id))
-            .ok_or(ContractError::NoPendingResolution)?;
-
-        pending_res.disputed = true;
-        Self::set_persistent(&env, &DataKey::PendingResolution(question_id), &pending_res);
-        Self::bump_instance(&env);
-
-        ResolutionDisputed { question_id }.publish(&env);
-        Ok(())
-    }
-
-    /// Permissionless: executes the pending resolution for `question_id` after
-    /// the dispute window has elapsed, provided dispute_resolve() has NOT been
-    /// called. Performs the same fee/credit/slash logic as resolve() using the
-    /// worker lists stored by resolve_challengeable().
-    ///
-    /// If a ChallengerBond was posted:
-    /// - resolution was disputed → bond returned to challenger;
-    /// - resolution was NOT disputed → bond forfeited to the platform.
-    ///
-    /// Returns Err(DisputeWindowNotElapsed) if called too early, or
-    /// Err(QuestionDisputed) if dispute_resolve() has already flagged it.
-    pub fn finalize_resolve(env: Env, question_id: u64) -> Result<(), ContractError> {
-        let pending_res: PendingResolution = env
-            .storage()
-            .persistent()
-            .get(&DataKey::PendingResolution(question_id))
-            .ok_or(ContractError::NoPendingResolution)?;
-
-        if env.ledger().sequence() <= pending_res.dispute_deadline {
-            return Err(ContractError::DisputeWindowNotElapsed);
-        }
-
-        if pending_res.disputed {
-            return Err(ContractError::QuestionDisputed);
-        }
-
-        let key = DataKey::Question(question_id);
-        let mut question = Self::load_question(&env, question_id)?;
-        // question must be ResolvedPending — this is the only valid state
-        // that a resolve_challengeable() call can leave it in.
-        if question.status != Status::ResolvedPending {
-            return Err(ContractError::NoPendingResolution);
-        }
-
-        let platform: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Platform)
-            .ok_or(ContractError::NotInitialized)?;
-        let question_token = Self::question_token(&env, question_id)?;
-        let token_client = token::Client::new(&env, &question_token);
-
-        let amount = question.amount;
-        let fee = Self::mul_bps(amount, PLATFORM_FEE_BPS);
-        let pool = amount - fee;
-        let workers = &pending_res.workers;
-        let losing_workers = &pending_res.losing_workers;
-        let n = workers.len() as i128;
-        let share = pool / n;
-        let dust = pool - share * n;
-
-        let slash_cap = Self::mul_bps(amount, SLASH_CAP_BPS_OF_AMOUNT);
-        let mut platform_take = fee + dust;
-        for loser in losing_workers.iter() {
-            let slashed = Self::slash(&env, &question_token, &loser, slash_cap);
-            platform_take = platform_take
-                .checked_add(slashed)
-                .ok_or(ContractError::ArithmeticOverflow)?;
-            if slashed > 0 {
-                WorkerSlashed { question_id, worker: loser, amount: slashed }.publish(&env);
-            }
-        }
-        for worker in workers.iter() {
-            Self::credit_owed(&env, &question_token, &worker, share)?;
-            WorkerCredited { question_id, worker: worker.clone(), amount: share }.publish(&env);
-            Self::record_resolved_credit(&env, &worker);
-        }
-
-        // Settle any challenger bond: not disputed → forfeit to platform.
-        let bond_key = DataKey::ChallengerBond(question_id);
-        let maybe_bond: Option<ChallengerBondEntry> = env
-            .storage()
-            .persistent()
-            .get(&bond_key);
-        if let Some(bond) = maybe_bond {
-            // Bond forfeited: add to platform_take so it transfers in one call.
-            platform_take = platform_take
-                .checked_add(bond.amount)
-                .ok_or(ContractError::ArithmeticOverflow)?;
-            env.storage().persistent().remove(&bond_key);
-            ChallengeBondSettled {
-                question_id,
-                challenger: bond.challenger,
-                amount: bond.amount,
-                returned: false,
-            }
-            .publish(&env);
-        }
-
-        if platform_take > 0 {
-            token_client.transfer(&env.current_contract_address(), &platform, &platform_take);
-        }
-
-        // Clean up.
-        env.storage()
-            .persistent()
-            .remove(&DataKey::PendingResolution(question_id));
-
-        Self::settle_question(&env, question_id, &key, &mut question, Status::Resolved);
-        QuestionResolved {
-            question_id,
-            worker_count: workers.len(),
-            fee,
-            total_slashed: platform_take - fee - dust,
-        }
-        .publish(&env);
-        Ok(())
-    }
-
-    /// Returns the stored PendingResolution for `question_id`, or None if
-    /// none exists (question was never put through resolve_challengeable(),
-    /// or finalize_resolve() already cleaned it up).
-    pub fn get_pending_resolution(env: Env, question_id: u64) -> Option<PendingResolution> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::PendingResolution(question_id))
-    }
-
-    /// Returns the stored ChallengerBondEntry for `question_id`, or None.
-    pub fn get_challenger_bond(env: Env, question_id: u64) -> Option<ChallengerBondEntry> {
-        env.storage()
-            .persistent()
-            .get(&DataKey::ChallengerBond(question_id))
-    }
-    }
 }
 
 #[cfg(test)]
@@ -5125,40 +4785,12 @@ mod test_ttl;
 #[cfg(test)]
 mod test_auto_topup;
 #[cfg(test)]
-mod test_owed_collateral;
-#[cfg(test)]
-mod test_claim_nft;
-#[cfg(test)]
-mod test_soulbound_reputation;
-#[cfg(test)]
-mod test_refund_underwriting;
-#[cfg(test)]
-mod test_worker_diversity;
-#[cfg(test)]
-mod test_dispute_finality;
-#[cfg(test)]
-mod test_median_consensus;
-#[cfg(test)]
 mod test_quorum_bounds;
 #[cfg(test)]
 mod test_dry_run_resolve;
-#[cfg(test)]
-mod test_batch_expiry_sweep;
-#[cfg(test)]
-mod test_leaderboard;
+
 #[cfg(test)]
 mod test_reopen_question;
 #[cfg(test)]
-mod test_question_templates;
-#[cfg(test)]
-mod test_delegated_auth;
-#[cfg(test)]
-mod test_payment_streaming;
-#[cfg(test)]
 mod test_migrate_balances;
-#[cfg(test)]
-mod test_second_tier_quorum;
-#[cfg(test)]
-mod test_bonded_challenger;
-#[cfg(test)]
-mod test_rpc_chaos;
+

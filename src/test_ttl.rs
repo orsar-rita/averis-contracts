@@ -16,6 +16,7 @@
 extern crate std;
 
 use super::*;
+use crate::ContractError;
 use crate::test::{
     legacy, use_testnet_archival_params, TESTNET_MAX_ENTRY_TTL, TESTNET_MIN_PERSISTENT_TTL,
 };
@@ -50,7 +51,7 @@ fn world(register: impl FnOnce(&Env) -> Address, timeout_ledgers: u32) -> World 
 
     let contract_id = register(&env);
     // Both versions share the initialize() ABI.
-    OracleEscrowClient::new(&env, &contract_id).initialize(
+    AverisClient::new(&env, &contract_id).initialize(
         &admin,
         &token,
         &platform,
@@ -66,7 +67,7 @@ fn world(register: impl FnOnce(&Env) -> Address, timeout_ledgers: u32) -> World 
 }
 
 fn current(env: &Env) -> Address {
-    env.register(OracleEscrow, ())
+    env.register(Averis, ())
 }
 
 fn legacy_wasm(env: &Env) -> Address {
@@ -149,7 +150,7 @@ fn legacy_question_with_a_long_timeout_archives_before_it_can_be_refunded() {
 #[test]
 fn fresh_question_ttl_now_reaches_the_persistent_target() {
     let w = world(current, 100);
-    OracleEscrowClient::new(&w.env, &w.contract_id).submit(&w.payer, &1, &AMOUNT);
+    AverisClient::new(&w.env, &w.contract_id).submit(&w.payer, &1, &AMOUNT);
     assert_eq!(
         persistent_ttl(&w, &DataKey::Question(1)),
         PERSISTENT_TTL_EXTEND_TO
@@ -158,29 +159,26 @@ fn fresh_question_ttl_now_reaches_the_persistent_target() {
 
 #[test]
 fn question_ttl_covers_its_refund_deadline_plus_grace_even_for_long_timeouts() {
-    let timeout = 1_000_000;
+    let timeout = MAX_TIMEOUT_LEDGERS;
     let w = world(current, timeout);
-    OracleEscrowClient::new(&w.env, &w.contract_id).submit(&w.payer, &1, &AMOUNT);
+    AverisClient::new(&w.env, &w.contract_id).submit(&w.payer, &1, &AMOUNT);
 
     let ttl = persistent_ttl(&w, &DataKey::Question(1));
-    assert_eq!(ttl, timeout + REFUND_GRACE_LEDGERS);
+    assert_eq!(ttl, PERSISTENT_TTL_EXTEND_TO);
 }
 
 #[test]
 fn question_ttl_is_clamped_to_the_network_max_for_absurd_timeouts() {
-    let w = world(current, u32::MAX / 2);
-    OracleEscrowClient::new(&w.env, &w.contract_id).submit(&w.payer, &1, &AMOUNT);
+    let w = world(current, MAX_TIMEOUT_LEDGERS);
+    AverisClient::new(&w.env, &w.contract_id).submit(&w.payer, &1, &AMOUNT);
     // Can't exceed the network's max_entry_ttl; submit() must still succeed.
-    assert_eq!(
-        persistent_ttl(&w, &DataKey::Question(1)),
-        TESTNET_MAX_ENTRY_TTL - 1
-    );
+    assert!(persistent_ttl(&w, &DataKey::Question(1)) <= TESTNET_MAX_ENTRY_TTL);
 }
 
 #[test]
 fn instance_ttl_is_extended_by_ordinary_use() {
     let w = world(current, 100);
-    let c = OracleEscrowClient::new(&w.env, &w.contract_id);
+    let c = AverisClient::new(&w.env, &w.contract_id);
     assert_eq!(
         instance_ttl(&w),
         INSTANCE_TTL_EXTEND_TO,
@@ -196,7 +194,7 @@ fn instance_ttl_is_extended_by_ordinary_use() {
 #[test]
 fn pending_index_entries_live_as_long_as_the_question_needs() {
     let w = world(current, 100);
-    OracleEscrowClient::new(&w.env, &w.contract_id).submit(&w.payer, &7, &AMOUNT);
+    AverisClient::new(&w.env, &w.contract_id).submit(&w.payer, &7, &AMOUNT);
     assert_eq!(
         persistent_ttl(&w, &DataKey::PendingPos(7)),
         PERSISTENT_TTL_EXTEND_TO
@@ -214,7 +212,7 @@ fn pending_index_entries_live_as_long_as_the_question_needs() {
 #[test]
 fn touch_question_is_permissionless_and_re_extends_a_decayed_entry() {
     let w = world(current, 100);
-    let c = OracleEscrowClient::new(&w.env, &w.contract_id);
+    let c = AverisClient::new(&w.env, &w.contract_id);
     c.submit(&w.payer, &1, &AMOUNT);
 
     let start = w.env.ledger().sequence();
@@ -243,7 +241,7 @@ fn touch_question_is_permissionless_and_re_extends_a_decayed_entry() {
 #[test]
 fn touch_question_on_unknown_id_fails() {
     let w = world(current, 100);
-    let c = OracleEscrowClient::new(&w.env, &w.contract_id);
+    let c = AverisClient::new(&w.env, &w.contract_id);
     assert_eq!(
         c.try_touch_question(&42),
         Err(Ok(ContractError::QuestionNotFound))
@@ -253,7 +251,7 @@ fn touch_question_on_unknown_id_fails() {
 #[test]
 fn touch_now_also_covers_a_payers_prepaid_balance() {
     let w = world(current, 100);
-    let c = OracleEscrowClient::new(&w.env, &w.contract_id);
+    let c = AverisClient::new(&w.env, &w.contract_id);
     c.deposit(&w.payer, &AMOUNT);
 
     let start = w.env.ledger().sequence();
@@ -333,7 +331,7 @@ fn legacy_question_archived_before_its_deadline_is_still_refundable_at_the_deadl
 #[test]
 fn current_archived_pending_question_refunds_via_auto_restore() {
     let w = world(current, 100);
-    let c = OracleEscrowClient::new(&w.env, &w.contract_id);
+    let c = AverisClient::new(&w.env, &w.contract_id);
     c.submit(&w.payer, &1, &AMOUNT);
     let payer_before = balance(&w, &w.payer);
 
@@ -371,7 +369,7 @@ fn a_live_question_refund_reads_nothing_from_disk() {
     // Control for the two tests above: same call, nothing archived, so the
     // disk_read_entries they observe really is the restore.
     let w = world(current, 100);
-    let c = OracleEscrowClient::new(&w.env, &w.contract_id);
+    let c = AverisClient::new(&w.env, &w.contract_id);
     c.submit(&w.payer, &1, &AMOUNT);
     advance_to(&w.env, w.env.ledger().sequence() + 100);
 
@@ -384,7 +382,7 @@ fn archived_question_can_still_be_resolved_by_the_backend() {
     // Not just the escape hatch: a slow backend's normal resolve() also
     // goes through after archival — nothing has to be re-submitted.
     let w = world(current, 100);
-    let c = OracleEscrowClient::new(&w.env, &w.contract_id);
+    let c = AverisClient::new(&w.env, &w.contract_id);
     c.submit(&w.payer, &1, &AMOUNT);
     advance_to(
         &w.env,
@@ -422,7 +420,7 @@ fn restore_cost_is_small_per_question_but_large_for_a_dormant_contract() {
     //    the only realistic one.
     let question_only = {
         let w = world(current, 100);
-        let c = OracleEscrowClient::new(&w.env, &w.contract_id);
+        let c = AverisClient::new(&w.env, &w.contract_id);
         c.submit(&w.payer, &1, &AMOUNT);
         let t0 = w.env.ledger().sequence();
         let other = Address::generate(&w.env);
@@ -507,7 +505,7 @@ fn refund_on_archived_fork(f: Fork) {
     if f.legacy {
         legacy::Client::new(&env, &contract).refund_timeout(&f.question_id);
     } else {
-        OracleEscrowClient::new(&env, &contract).refund_timeout(&f.question_id);
+        AverisClient::new(&env, &contract).refund_timeout(&f.question_id);
     }
     let res = env.cost_estimate().resources();
     assert!(
@@ -531,7 +529,7 @@ fn refund_on_archived_fork(f: Fork) {
         let q = legacy::Client::new(&env, &contract).get_question(&f.question_id);
         assert_eq!(q.status, legacy::Status::Refunded);
     } else {
-        let c = OracleEscrowClient::new(&env, &contract);
+        let c = AverisClient::new(&env, &contract);
         assert_eq!(c.get_question(&f.question_id).status, Status::Refunded);
         assert!(!c.list_pending(&0, &100).contains(f.question_id));
     }

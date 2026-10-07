@@ -2,7 +2,7 @@
 // Shadow-contract testing (issue #120; see docs/SHADOW_TESTING.md).
 //
 // Mirrors every successful state-changing call made against the PRODUCTION
-// oracle-escrow contract onto a SHADOW deployment of a candidate lib.rs
+// averis contract onto a SHADOW deployment of a candidate lib.rs
 // change, then diffs the two contracts' state. Production is only ever
 // read: this tool holds no production key and sends nothing to it.
 //

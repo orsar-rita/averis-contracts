@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# #115: deterministic build of the OracleEscrow WASM. Prints the sha256 of
+# #115: deterministic build of the Averis WASM. Prints the sha256 of
 # the optimized artifact and writes it to target/wasm-hash.txt.
 #
 # Runs identically on a host (with rust-toolchain.toml's rustc and the

@@ -45,10 +45,10 @@ jobs:
       hash: ${{ steps.build.outputs.hash }}
     steps:
       - uses: actions/checkout@v4
-      - run: docker build -t arbiter-contract-build .
+      - run: docker build -t averis-contract-build .
       - id: build
         run: |
-          docker run --rm -v "$PWD:/src" arbiter-contract-build
+          docker run --rm -v "$PWD:/src" averis-contract-build
           echo "hash=$(cat target/wasm-hash.txt)" >> "$GITHUB_OUTPUT"
 
   compare:

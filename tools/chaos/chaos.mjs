@@ -9,7 +9,7 @@
 //        [--rpc http://localhost:8000/rpc] [--friendbot http://localhost:8000/friendbot] \
 //        [--passphrase "..."] [--profile tools/chaos/profiles/blips.json] \
 //        [--submit-profile ...] [--keeper-profile tools/chaos/profiles/none.json] [--seed 1] [--questions 12] \
-//        [--refund-share 0.25] [--retry-module ../arbiter-backend/src/retry.js] \
+//        [--refund-share 0.25] [--retry-module ../averis-backend/src/retry.js] \
 //        [--attempts 2] [--attempt-timeout-ms 8000] [--base-delay-ms 500] [--out report.json]
 //
 //   # 2. Against the real backend: put the proxy in front of its RPC (and

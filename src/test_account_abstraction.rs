@@ -45,7 +45,7 @@ impl DummySmartWallet {
 #[test]
 fn stake_unstake_withdraw_work_unmodified_for_a_contract_address() {
     let fx = setup();
-    let client = OracleEscrowClient::new(&fx.env, &fx.contract_id);
+    let client = AverisClient::new(&fx.env, &fx.contract_id);
 
     // Stand-in for a smart-wallet / account-abstraction address: an
     // `Address` backed by a contract, not a keypair.

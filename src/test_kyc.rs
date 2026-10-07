@@ -16,14 +16,15 @@
 
 extern crate std;
 
+use super::*;
 use crate::test::setup;
-use crate::*;
-use soroban_sdk::testutils::{Address as _, Ledger};
+use crate::ContractError;
+use soroban_sdk::testutils::Address as _;
 
 #[test]
 fn is_kyc_verified_defaults_to_false() {
     let fx = setup();
-    let client = OracleEscrowClient::new(&fx.env, &fx.contract_id);
+    let client = AverisClient::new(&fx.env, &fx.contract_id);
     let subject = Address::generate(&fx.env);
     assert!(!client.is_kyc_verified(&subject));
 }
@@ -31,7 +32,7 @@ fn is_kyc_verified_defaults_to_false() {
 #[test]
 fn set_kyc_attestor_stores_and_returns_the_pubkey() {
     let fx = setup();
-    let client = OracleEscrowClient::new(&fx.env, &fx.contract_id);
+    let client = AverisClient::new(&fx.env, &fx.contract_id);
     assert_eq!(client.get_kyc_attestor(), None);
 
     let pubkey = BytesN::from_array(&fx.env, &[9u8; 32]);
@@ -42,7 +43,7 @@ fn set_kyc_attestor_stores_and_returns_the_pubkey() {
 #[test]
 fn attest_kyc_fails_when_no_attestor_is_configured() {
     let fx = setup();
-    let client = OracleEscrowClient::new(&fx.env, &fx.contract_id);
+    let client = AverisClient::new(&fx.env, &fx.contract_id);
     let subject = Address::generate(&fx.env);
     let expiry = fx.env.ledger().sequence() + 1000;
     let sig = BytesN::from_array(&fx.env, &[0u8; 64]);
@@ -54,7 +55,7 @@ fn attest_kyc_fails_when_no_attestor_is_configured() {
 #[test]
 fn attest_kyc_rejects_a_non_future_expiry() {
     let fx = setup();
-    let client = OracleEscrowClient::new(&fx.env, &fx.contract_id);
+    let client = AverisClient::new(&fx.env, &fx.contract_id);
     client.set_kyc_attestor(&BytesN::from_array(&fx.env, &[9u8; 32]));
 
     let subject = Address::generate(&fx.env);

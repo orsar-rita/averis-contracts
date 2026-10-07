@@ -11,6 +11,7 @@
 extern crate std;
 
 use super::*;
+use crate::ContractError;
 use crate::test::legacy;
 use soroban_sdk::testutils::{Address as _, EnvTestConfig, Ledger};
 use std::vec::Vec as StdVec;
@@ -59,18 +60,18 @@ impl Escrow for legacy::Client<'_> {
     }
 }
 
-impl Escrow for OracleEscrowClient<'_> {
+impl Escrow for AverisClient<'_> {
     fn submit(&self, payer: &Address, id: u64, amount: i128) {
-        OracleEscrowClient::submit(self, payer, &id, &amount);
+        AverisClient::submit(self, payer, &id, &amount);
     }
     fn resolve(&self, id: u64, workers: &Vec<Address>, losers: &Vec<Address>, hash: &BytesN<32>) {
-        OracleEscrowClient::resolve(self, &id, workers, losers, hash);
+        AverisClient::resolve(self, &id, workers, losers, hash);
     }
     fn refund(&self, id: u64) {
-        OracleEscrowClient::refund(self, &id);
+        AverisClient::refund(self, &id);
     }
     fn stake(&self, worker: &Address, amount: i128) {
-        OracleEscrowClient::stake(self, worker, &amount);
+        AverisClient::stake(self, worker, &amount);
     }
     fn pull_stake(&self, worker: &Address) {
         let s = self.get_stake(worker);
@@ -115,11 +116,11 @@ impl Market {
             .address();
         let id = match version {
             Version::Legacy => env.register(legacy::WASM, ()),
-            Version::Current => env.register(OracleEscrow, ()),
+            Version::Current => env.register(Averis, ()),
         };
         let admin = Address::generate(&env);
         let platform = Address::generate(&env);
-        OracleEscrowClient::new(&env, &id).initialize(&admin, &token, &platform, &17_280);
+        AverisClient::new(&env, &id).initialize(&admin, &token, &platform, &17_280);
         let payer = Address::generate(&env);
         token::StellarAssetClient::new(&env, &token).mint(&payer, &(i128::MAX / 4));
         Market {
@@ -134,7 +135,7 @@ impl Market {
     fn with<R>(&self, f: impl FnOnce(&dyn Escrow) -> R) -> R {
         match self.version {
             Version::Legacy => f(&legacy::Client::new(&self.env, &self.id)),
-            Version::Current => f(&OracleEscrowClient::new(&self.env, &self.id)),
+            Version::Current => f(&AverisClient::new(&self.env, &self.id)),
         }
     }
 
@@ -198,7 +199,7 @@ fn a3_pulling_stake_before_resolve_escapes_the_slash_on_v020_but_not_now() {
 #[test]
 fn a3_unbonding_stake_stays_slashable_until_release_and_nets_out_on_claim() {
     let m = Market::new(Version::Current);
-    let c = OracleEscrowClient::new(&m.env, &m.id);
+    let c = AverisClient::new(&m.env, &m.id);
     let liar = m.worker(20 * USDC);
     let honest = m.worker(0);
     m.mature();
@@ -230,7 +231,7 @@ fn a3_flash_stake_counts_immediately_on_v020_but_must_mature_now() {
     );
 
     let m = Market::new(Version::Current);
-    let c = OracleEscrowClient::new(&m.env, &m.id);
+    let c = AverisClient::new(&m.env, &m.id);
     let w = m.worker(10 * USDC);
     assert_eq!(c.get_stake(&w), 10 * USDC);
     assert_eq!(c.get_matured_stake(&w), 0, "not credible yet");
@@ -255,7 +256,7 @@ fn a3_begin_unstake_drops_matured_stake_immediately() {
     // The backend's dispatch gate must stop trusting stake the moment it's
     // on its way out, not when it finally leaves.
     let m = Market::new(Version::Current);
-    let c = OracleEscrowClient::new(&m.env, &m.id);
+    let c = AverisClient::new(&m.env, &m.id);
     let w = m.worker(10 * USDC);
     m.mature();
     c.begin_unstake(&w, &(4 * USDC));
@@ -265,7 +266,7 @@ fn a3_begin_unstake_drops_matured_stake_immediately() {
 #[test]
 fn slash_hits_warming_first_then_settled_then_unbonding() {
     let m = Market::new(Version::Current);
-    let c = OracleEscrowClient::new(&m.env, &m.id);
+    let c = AverisClient::new(&m.env, &m.id);
     let w = m.worker(100 * USDC); // will be settled
     m.mature();
     token::StellarAssetClient::new(&m.env, &m.token).mint(&w, &USDC);
@@ -514,7 +515,7 @@ fn simulate(version: Version, s: Scenario, seed: u64) -> Outcome {
             out.refunded += 1;
             continue;
         }
-        m.with(|e| e.resolve(q, &winners, &losers, &BytesN::from_array(&env, &[0u8; 32])));
+        m.with(|e| e.resolve(q, &winners, &losers, &BytesN::from_array(&m.env, &[0u8; 32])));
         if lie && !audit && !consensus {
             out.corrupted += 1;
             bribes += s.bribe;

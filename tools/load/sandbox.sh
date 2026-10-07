@@ -17,10 +17,10 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-NAME="${NAME:-arbiter-load}"
+NAME="${NAME:-averis-load}"
 LIMITS="${LIMITS:-testnet}"
 TIMEOUT_LEDGERS="${TIMEOUT_LEDGERS:-17280}"
-NET=arbiter-load-local
+NET=averis-load-local
 RPC=http://localhost:8000/rpc
 PASSPHRASE="Standalone Network ; February 2017"
 
@@ -49,7 +49,7 @@ for k in load-admin load-platform; do
 done
 
 "$ROOT/scripts/build-wasm.sh" --wasm-only >&2
-WASM="$ROOT/target/wasm32v1-none/release/oracle_escrow.wasm"
+WASM="$ROOT/target/wasm32v1-none/release/averis.wasm"
 TOKEN=$(stellar contract id asset --asset native --network "$NET")
 stellar contract asset deploy --asset native --network "$NET" --source load-admin >/dev/null 2>&1 || true
 CONTRACT=$(stellar contract deploy --wasm "$WASM" --network "$NET" --source load-admin)

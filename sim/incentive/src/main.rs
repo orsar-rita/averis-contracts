@@ -1,4 +1,4 @@
-//! Incentive-alignment simulation for oracle-escrow (issue #117).
+//! Incentive-alignment simulation for averis (issue #117).
 //!
 //!     cargo run --release                                   # all sweeps, markdown to stdout
 //!     cargo run --release -- --out ../../docs/economics/incentive-tables.md

@@ -10,14 +10,15 @@
 
 extern crate std;
 
+use super::*;
 use crate::test::{setup, AMOUNT};
-use crate::*;
+use crate::ContractError;
 use soroban_sdk::testutils::{Address as _, Ledger};
 
 #[test]
 fn snapshot_stake_at_ledger_records_the_value() {
     let fx = setup();
-    let client = OracleEscrowClient::new(&fx.env, &fx.contract_id);
+    let client = AverisClient::new(&fx.env, &fx.contract_id);
     let worker = Address::generate(&fx.env);
     token::StellarAssetClient::new(&fx.env, &fx.token_address).mint(&worker, &AMOUNT);
 
@@ -31,7 +32,7 @@ fn snapshot_stake_at_ledger_records_the_value() {
 #[test]
 fn get_historical_stake_returns_the_correct_value_for_a_past_snapshot() {
     let fx = setup();
-    let client = OracleEscrowClient::new(&fx.env, &fx.contract_id);
+    let client = AverisClient::new(&fx.env, &fx.contract_id);
     let worker = Address::generate(&fx.env);
     token::StellarAssetClient::new(&fx.env, &fx.token_address).mint(&worker, &(AMOUNT * 2));
 
@@ -55,7 +56,7 @@ fn get_historical_stake_returns_the_correct_value_for_a_past_snapshot() {
 #[test]
 fn get_historical_stake_fails_when_no_snapshot_exists_at_that_ledger() {
     let fx = setup();
-    let client = OracleEscrowClient::new(&fx.env, &fx.contract_id);
+    let client = AverisClient::new(&fx.env, &fx.contract_id);
     let worker = Address::generate(&fx.env);
 
     let result = client.try_get_historical_stake(&worker, &fx.env.ledger().sequence());

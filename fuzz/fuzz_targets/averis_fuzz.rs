@@ -1,4 +1,4 @@
-//! cargo-fuzz target for the OracleEscrow contract (#70).
+//! cargo-fuzz target for the Averis contract (#70).
 //!
 //! # Design: full-Env-backed harness
 //!
@@ -30,10 +30,10 @@
 //! cargo install cargo-fuzz
 //!
 //! # Run for 60 seconds (bounded) from the repo root:
-//! cargo fuzz run oracle_escrow_fuzz -- -max_total_time=60
+//! cargo fuzz run averis_fuzz -- -max_total_time=60
 //!
 //! # Run with a specific seed corpus entry:
-//! cargo fuzz run oracle_escrow_fuzz fuzz/corpus/oracle_escrow_fuzz/
+//! cargo fuzz run averis_fuzz fuzz/corpus/averis_fuzz/
 //! ```
 //!
 //! # Notes
@@ -48,7 +48,7 @@
 
 use arbitrary::{Arbitrary, Unstructured};
 use libfuzzer_sys::fuzz_target;
-use oracle_escrow::{OracleEscrow, OracleEscrowClient, Status};
+use averis::{Averis, AverisClient, Status};
 use soroban_sdk::{
     testutils::{Address as _, EnvTestConfig, Ledger},
     token, Address, Env, Vec,
@@ -157,9 +157,9 @@ impl H {
             .address();
         let admin = Address::generate(&env);
         let platform = Address::generate(&env);
-        let contract = env.register(OracleEscrow, ());
+        let contract = env.register(Averis, ());
 
-        OracleEscrowClient::new(&env, &contract)
+        AverisClient::new(&env, &contract)
             .initialize(&admin, &token, &platform, &TIMEOUT);
 
         let sac = token::StellarAssetClient::new(&env, &token);
@@ -179,8 +179,8 @@ impl H {
         H { env, contract, token, payers, workers, admin, platform }
     }
 
-    fn client(&self) -> OracleEscrowClient<'_> {
-        OracleEscrowClient::new(&self.env, &self.contract)
+    fn client(&self) -> AverisClient<'_> {
+        AverisClient::new(&self.env, &self.contract)
     }
 
     fn payer(&self, idx: u8) -> &Address {

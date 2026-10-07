@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Guided deploy + initialize wizard for OracleEscrow (issue #113).
+# Guided deploy + initialize wizard for Averis (issue #113).
 #
 # Motivation
 # ----------
@@ -8,7 +8,7 @@
 # calls it first, requiring only that caller's own signature on whatever
 # `admin` address they pass in. A freshly-deployed, not-yet-initialized
 # contract therefore races the real deployer -- anyone watching the network
-# for a new OracleEscrow WASM upload could front-run the legitimate
+# for a new Averis WASM upload could front-run the legitimate
 # `initialize(admin, token, platform, timeout_ledgers)` call and become
 # `admin` themselves.
 #
@@ -34,12 +34,12 @@
 # Environment overrides (used as prompt defaults):
 #   STELLAR_NETWORK   (default: testnet)
 #   STELLAR_SOURCE    (default: the CLI's configured default identity)
-#   ORACLE_ESCROW_WASM (default: target/wasm32-unknown-unknown/release/oracle_escrow.wasm)
+#   AVERIS_WASM (default: target/wasm32-unknown-unknown/release/averis.wasm)
 #
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-WASM_OUT="${ORACLE_ESCROW_WASM:-${ROOT_DIR}/target/wasm32-unknown-unknown/release/oracle_escrow.wasm}"
+WASM_OUT="${AVERIS_WASM:-${ROOT_DIR}/target/wasm32-unknown-unknown/release/averis.wasm}"
 NETWORK="${STELLAR_NETWORK:-testnet}"
 SOURCE="${STELLAR_SOURCE:-}"
 
@@ -96,7 +96,7 @@ prompt_until_valid() {
 }
 
 if [[ "$NON_INTERACTIVE" -eq 0 ]]; then
-  echo "==> OracleEscrow guided deploy + initialize wizard"
+  echo "==> Averis guided deploy + initialize wizard"
   echo "    (mitigation for the initialize() front-running issue -- not a fix)"
   echo
   echo "Collecting all four initialize() arguments BEFORE deploying so they are"
@@ -141,7 +141,7 @@ SOURCE_ARGS=()
 # No manual pause between these two calls: the contract id is captured and
 # immediately fed into `initialize` in the same invocation.
 
-echo "==> deploying OracleEscrow to ${NETWORK}"
+echo "==> deploying Averis to ${NETWORK}"
 DEPLOY_START_NS=$(date +%s%N)
 CONTRACT_ID="$(stellar contract deploy \
   --wasm "$WASM_OUT" \

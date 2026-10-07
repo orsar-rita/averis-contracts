@@ -1,5 +1,5 @@
 {
-  "name": "oracle-escrow-shadow",
+  "name": "averis-shadow",
   "private": true,
   "description": "Shadow-contract mirroring and state diffing (issue #120). See docs/SHADOW_TESTING.md.",
   "type": "module",

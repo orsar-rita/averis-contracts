@@ -1,5 +1,5 @@
 [package]
-name = "oracle-escrow-fuzz"
+name = "averis-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"
@@ -16,14 +16,14 @@ incremental = false
 cargo-fuzz = true
 
 [[bin]]
-name = "oracle_escrow_fuzz"
-path = "fuzz_targets/oracle_escrow_fuzz.rs"
+name = "averis_fuzz"
+path = "fuzz_targets/averis_fuzz.rs"
 test = false
 doc = false
 
 [dependencies]
 # The contract crate itself, built in testutils mode so Env::default() works.
-oracle-escrow = { path = "..", features = ["testutils"] }
+averis = { path = "..", features = ["testutils"] }
 # arbitrary provides the derive macro we use to turn raw fuzz bytes into
 # structured call sequences, without hand-writing a custom byte-parser.
 arbitrary = { version = "1", features = ["derive"] }

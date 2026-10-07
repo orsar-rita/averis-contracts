@@ -1,7 +1,7 @@
 // Fault-injecting HTTP proxy for Soroban RPC (JSON-RPC) and Horizon.
 // Issue #121; see docs/RPC_CHAOS_TESTING.md.
 //
-// Sits between a client (arbiter-backend's stellarClient.js, or
+// Sits between a client (averis-backend's stellarClient.js, or
 // tools/chaos/chaos.mjs) and a real upstream. For every request it rolls a
 // seeded die and does one of:
 //

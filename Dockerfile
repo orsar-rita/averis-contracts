@@ -1,9 +1,9 @@
-# #115: canonical, pinned build environment for the OracleEscrow WASM.
+# #115: canonical, pinned build environment for the Averis WASM.
 #
 # Anyone (including an SCF reviewer) can reproduce the deployed bytecode with:
 #
-#   docker build -t arbiter-contract-build .
-#   docker run --rm -v "$PWD:/src" arbiter-contract-build
+#   docker build -t averis-contract-build .
+#   docker run --rm -v "$PWD:/src" averis-contract-build
 #
 # which prints the sha256 of the optimized WASM. Every input that can change
 # the output is pinned here: the base image by digest-able tag, rustc via

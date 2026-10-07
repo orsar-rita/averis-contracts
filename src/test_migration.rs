@@ -10,10 +10,11 @@
 extern crate std;
 
 use super::*;
+use crate::ContractError;
 use soroban_sdk::{
     testutils::{Address as _, EnvTestConfig, Events as _, Ledger, MockAuth, MockAuthInvoke},
     xdr::ToXdr,
-    IntoVal, Symbol, TryFromVal,
+    BytesN, IntoVal, Symbol, TryFromVal,
 };
 use std::collections::BTreeMap;
 
@@ -31,10 +32,10 @@ struct Pair {
 }
 
 fn escrow(env: &Env, admin: &Address, token: &Address) -> Address {
-    let id = env.register(OracleEscrow, ());
+    let id = env.register(Averis, ());
     let platform = Address::generate(env);
     env.mock_all_auths();
-    OracleEscrowClient::new(env, &id).initialize(admin, token, &platform, &TIMEOUT);
+    AverisClient::new(env, &id).initialize(admin, token, &platform, &TIMEOUT);
     id
 }
 
@@ -56,7 +57,7 @@ fn pair(n: u64) -> Pair {
     let old = escrow(&env, &old_admin, &token);
     let new = escrow(&env, &new_admin, &token);
 
-    let old_c = OracleEscrowClient::new(&env, &old);
+    let old_c = AverisClient::new(&env, &old);
     let mut payers = std::vec::Vec::new();
     for id in 1..=n {
         let payer = Address::generate(&env);
@@ -64,7 +65,7 @@ fn pair(n: u64) -> Pair {
         old_c.submit(&payer, &id, &(AMOUNT * id as i128));
         payers.push(payer);
     }
-    OracleEscrowClient::new(&env, &new).set_migration_source(&old);
+    AverisClient::new(&env, &new).set_migration_source(&old);
     env.set_auths(&[]);
 
     Pair {
@@ -90,7 +91,7 @@ fn ids(env: &Env, ids: &[u64]) -> Vec<u64> {
 fn try_migrate(p: &Pair, batch: &[u64]) -> Result<i128, ContractError> {
     let batch = ids(&p.env, batch);
     let target = p.new.clone();
-    let res = OracleEscrowClient::new(&p.env, &p.old)
+    let res = AverisClient::new(&p.env, &p.old)
         .mock_auths(&[MockAuth {
             address: &p.old_admin,
             invoke: &MockAuthInvoke {
@@ -114,7 +115,7 @@ fn bal(p: &Pair, who: &Address) -> i128 {
 }
 
 fn pending_ids(env: &Env, contract: &Address) -> std::collections::BTreeSet<u64> {
-    let c = OracleEscrowClient::new(env, contract);
+    let c = AverisClient::new(env, contract);
     let mut out = std::collections::BTreeSet::new();
     let mut start = 0;
     loop {
@@ -132,7 +133,7 @@ fn pending_ids(env: &Env, contract: &Address) -> std::collections::BTreeSet<u64>
 }
 
 fn sum_pending(env: &Env, contract: &Address) -> i128 {
-    let c = OracleEscrowClient::new(env, contract);
+    let c = AverisClient::new(env, contract);
     pending_ids(env, contract)
         .iter()
         .map(|id| c.get_question(id).amount)
@@ -154,9 +155,9 @@ fn list_pending_enumerates_every_pending_question_across_pages() {
 fn settled_questions_leave_the_index_and_the_rest_stay_listed() {
     let p = pair(6);
     p.env.mock_all_auths();
-    let c = OracleEscrowClient::new(&p.env, &p.old);
+    let c = AverisClient::new(&p.env, &p.old);
     let w = Address::generate(&p.env);
-    c.resolve(&1, &Vec::from_array(&p.env, [w]), &Vec::new(&p.env), &BytesN::from_array(&env, &[0u8; 32])); // head
+    c.resolve(&1, &Vec::from_array(&p.env, [w]), &Vec::new(&p.env), &BytesN::from_array(&p.env, &[0u8; 32])); // head
     c.refund(&6); // tail
     c.refund(&3); // middle
     p.env.ledger().set_sequence_number(10_000 + TIMEOUT);
@@ -176,7 +177,7 @@ fn settled_questions_leave_the_index_and_the_rest_stay_listed() {
 #[test]
 fn list_pending_clamps_the_page_size_and_tolerates_out_of_range_starts() {
     let p = pair(3);
-    let c = OracleEscrowClient::new(&p.env, &p.old);
+    let c = AverisClient::new(&p.env, &p.old);
     assert_eq!(c.list_pending(&0, &u32::MAX).len(), 3);
     assert_eq!(c.list_pending(&3, &10).len(), 0);
     assert_eq!(c.list_pending(&u32::MAX, &u32::MAX).len(), 0);
@@ -191,7 +192,7 @@ fn list_pending_page_is_capped_at_max_pending_page() {
         .address();
     let admin = Address::generate(&env);
     let id = escrow(&env, &admin, &token);
-    let c = OracleEscrowClient::new(&env, &id);
+    let c = AverisClient::new(&env, &id);
     let payer = Address::generate(&env);
     token::StellarAssetClient::new(&env, &token).mint(&payer, &1_000);
     for q in 0..(MAX_PENDING_PAGE as u64 + 5) {
@@ -210,7 +211,7 @@ fn opened_and_settled_events_let_an_indexer_rebuild_the_pending_set() {
         .address();
     let admin = Address::generate(&env);
     let id = escrow(&env, &admin, &token);
-    let c = OracleEscrowClient::new(&env, &id);
+    let c = AverisClient::new(&env, &id);
     let payer = Address::generate(&env);
     token::StellarAssetClient::new(&env, &token).mint(&payer, &(AMOUNT * 3));
 
@@ -249,8 +250,8 @@ fn opened_and_settled_events_let_an_indexer_rebuild_the_pending_set() {
 #[test]
 fn migrate_moves_funds_and_questions_with_their_original_deadlines() {
     let p = pair(3);
-    let old_c = OracleEscrowClient::new(&p.env, &p.old);
-    let new_c = OracleEscrowClient::new(&p.env, &p.new);
+    let old_c = AverisClient::new(&p.env, &p.old);
+    let new_c = AverisClient::new(&p.env, &p.new);
     let before: std::vec::Vec<Question> = (1..=3).map(|id| old_c.get_question(&id)).collect();
     p.env.ledger().set_sequence_number(10_500); // migrate mid-way through the timeout
 
@@ -281,7 +282,7 @@ fn migrated_question_keeps_its_escape_hatch_on_the_original_schedule() {
     p.env.ledger().set_sequence_number(10_000 + TIMEOUT - 1);
     try_migrate(&p, &[1]).unwrap();
 
-    let new_c = OracleEscrowClient::new(&p.env, &p.new);
+    let new_c = AverisClient::new(&p.env, &p.new);
     assert_eq!(
         new_c.try_refund_timeout(&1),
         Err(Ok(ContractError::TooEarlyForTimeout))
@@ -299,9 +300,9 @@ fn migrated_question_settles_normally_on_the_target_and_is_dead_on_the_source() 
     let w = Address::generate(&p.env);
     let workers = Vec::from_array(&p.env, [w.clone()]);
 
-    let old_c = OracleEscrowClient::new(&p.env, &p.old);
+    let old_c = AverisClient::new(&p.env, &p.old);
     assert_eq!(
-        old_c.try_resolve(&1, &workers, &Vec::new(&p.env), &BytesN::from_array(&env, &[0u8; 32])),
+        old_c.try_resolve(&1, &workers, &Vec::new(&p.env), &BytesN::from_array(&p.env, &[0u8; 32])),
         Err(Ok(ContractError::QuestionNotPending))
     );
     assert_eq!(
@@ -314,9 +315,9 @@ fn migrated_question_settles_normally_on_the_target_and_is_dead_on_the_source() 
         Err(Ok(ContractError::QuestionNotPending))
     );
 
-    OracleEscrowClient::new(&p.env, &p.new).resolve(&1, &workers, &Vec::new(&p.env), &BytesN::from_array(&env, &[0u8; 32]));
+    AverisClient::new(&p.env, &p.new).resolve(&1, &workers, &Vec::new(&p.env), &BytesN::from_array(&p.env, &[0u8; 32]));
     assert_eq!(
-        OracleEscrowClient::new(&p.env, &p.new).get_owed(&w),
+        AverisClient::new(&p.env, &p.new).get_owed(&w),
         AMOUNT * 8 / 10
     );
 }
@@ -334,7 +335,7 @@ fn migration_needs_only_the_source_admins_signature() {
 fn migration_without_the_source_admin_fails() {
     let p = pair(1);
     let res =
-        OracleEscrowClient::new(&p.env, &p.old).try_migrate_pending(&ids(&p.env, &[1]), &p.new);
+        AverisClient::new(&p.env, &p.old).try_migrate_pending(&ids(&p.env, &[1]), &p.new);
     assert!(res.is_err());
     assert_eq!(bal(&p, &p.old), AMOUNT);
 }
@@ -383,7 +384,7 @@ fn an_id_that_already_exists_on_the_target_reverts_the_batch() {
     p.env.mock_all_auths();
     let payer = Address::generate(&p.env);
     token::StellarAssetClient::new(&p.env, &p.token).mint(&payer, &AMOUNT);
-    OracleEscrowClient::new(&p.env, &p.new).submit(&payer, &2, &AMOUNT); // id 2 already taken
+    AverisClient::new(&p.env, &p.new).submit(&payer, &2, &AMOUNT); // id 2 already taken
     p.env.set_auths(&[]);
 
     // The target's error propagates up through migrate_pending unchanged,
@@ -396,7 +397,7 @@ fn an_id_that_already_exists_on_the_target_reverts_the_batch() {
 fn a_target_that_has_not_named_this_source_refuses_the_import() {
     let p = pair(1);
     p.env.mock_all_auths();
-    OracleEscrowClient::new(&p.env, &p.new).clear_migration_source();
+    AverisClient::new(&p.env, &p.new).clear_migration_source();
     p.env.set_auths(&[]);
     assert_batch_reverts(&p, &[1], ContractError::MigrationNotAuthorized);
     assert_eq!(bal(&p, &p.new), 0);
@@ -411,11 +412,11 @@ fn a_target_on_a_different_token_refuses_the_import() {
         .register_stellar_asset_contract_v2(Address::generate(&p.env))
         .address();
     let other = escrow(&p.env, &p.new_admin, &other_token);
-    OracleEscrowClient::new(&p.env, &other).set_migration_source(&p.old);
+    AverisClient::new(&p.env, &other).set_migration_source(&p.old);
     p.env.set_auths(&[]);
 
     let batch = ids(&p.env, &[1]);
-    let res = OracleEscrowClient::new(&p.env, &p.old)
+    let res = AverisClient::new(&p.env, &p.old)
         .mock_auths(&[MockAuth {
             address: &p.old_admin,
             invoke: &MockAuthInvoke {
@@ -434,7 +435,7 @@ fn a_target_on_a_different_token_refuses_the_import() {
 fn migrating_to_itself_is_rejected() {
     let p = pair(1);
     let batch = ids(&p.env, &[1]);
-    let res = OracleEscrowClient::new(&p.env, &p.old)
+    let res = AverisClient::new(&p.env, &p.old)
         .mock_auths(&[MockAuth {
             address: &p.old_admin,
             invoke: &MockAuthInvoke {
@@ -451,7 +452,7 @@ fn migrating_to_itself_is_rejected() {
 #[test]
 fn nobody_but_the_named_source_contract_can_import() {
     let p = pair(1);
-    let new_c = OracleEscrowClient::new(&p.env, &p.new);
+    let new_c = AverisClient::new(&p.env, &p.new);
     let attacker = Address::generate(&p.env);
     let payer = p.payers[0].clone();
 
@@ -474,7 +475,7 @@ fn import_cannot_mint_a_question_without_funds_actually_arriving() {
     // itself, the target PULLS the amount — so without the source also
     // authorizing that exact transfer, the import fails.
     let p = pair(1);
-    let new_c = OracleEscrowClient::new(&p.env, &p.new);
+    let new_c = AverisClient::new(&p.env, &p.new);
     let payer = p.payers[0].clone();
     let res = new_c
         .mock_auths(&[MockAuth {
@@ -566,7 +567,7 @@ fn check_invariants(
     assert_eq!(bal(p, &p.old) + bal(p, &p.new) + total_paid_out, total_in);
     // 4. Every question that exists anywhere is accounted for exactly once.
     for id in old_p.iter() {
-        assert!(OracleEscrowClient::new(&p.env, &p.new)
+        assert!(AverisClient::new(&p.env, &p.new)
             .try_get_question(id)
             .is_err());
     }
@@ -615,12 +616,13 @@ fn randomized_migration_never_loses_or_duplicates_funds() {
                     let pend: std::vec::Vec<u64> = pending_ids(&p.env, side).into_iter().collect();
                     if let Some(id) = pend.first() {
                         p.env.mock_all_auths();
-                        let c = OracleEscrowClient::new(&p.env, side);
+                        let c = AverisClient::new(&p.env, side);
                         let amount = c.get_question(id).amount;
                         c.resolve(
                             id,
                             &Vec::from_array(&p.env, [worker.clone()]),
                             &Vec::new(&p.env),
+                            &BytesN::from_array(&p.env, &[0u8; 32]),
                         );
                         p.env.set_auths(&[]);
                         let mut k = std::vec![tag];
@@ -635,7 +637,7 @@ fn randomized_migration_never_loses_or_duplicates_funds() {
                     let pend: std::vec::Vec<u64> = pending_ids(&p.env, side).into_iter().collect();
                     if let Some(id) = pend.last() {
                         p.env.mock_all_auths();
-                        let c = OracleEscrowClient::new(&p.env, side);
+                        let c = AverisClient::new(&p.env, side);
                         paid_out += c.get_question(id).amount;
                         c.refund(id);
                         p.env.set_auths(&[]);

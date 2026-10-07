@@ -1,7 +1,7 @@
 {
-  "name": "oracle-escrow-load",
+  "name": "averis-load",
   "private": true,
-  "description": "Load harness for oracle-escrow (issue #119). See docs/LOAD_TESTING.md.",
+  "description": "Load harness for averis (issue #119). See docs/LOAD_TESTING.md.",
   "type": "module",
   "engines": { "node": ">=20" },
   "scripts": {

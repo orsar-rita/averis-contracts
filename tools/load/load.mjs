@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Load harness for oracle-escrow against a real (local sandbox) network,
+// Load harness for averis against a real (local sandbox) network,
 // plus the backend's HTTP surface. Issue #119; see docs/LOAD_TESTING.md.
 //
 //   npm --prefix tools/load install
@@ -394,7 +394,7 @@ async function sseClient(url, counter, signal) {
 }
 
 async function backendMode(o) {
-  // The request body is a template taken from arbiter-backend's POST /oracle
+  // The request body is a template taken from averis-backend's POST /oracle
   // contract; "{{n}}" is replaced with the request number so each request is
   // a distinct question. This harness doesn't hard-code the schema: the
   // backend owns it.

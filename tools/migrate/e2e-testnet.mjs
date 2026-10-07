@@ -18,9 +18,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 const NET = "testnet";
-const WASM = "target/wasm32v1-none/release/oracle_escrow.wasm";
+const WASM = "target/wasm32v1-none/release/averis.wasm";
 const P = `arbe2e${Date.now().toString(36)}`;
-const journal = join(mkdtempSync(join(tmpdir(), "arbiter-migrate-")), "journal.jsonl");
+const journal = join(mkdtempSync(join(tmpdir(), "averis-migrate-")), "journal.jsonl");
 
 function sh(args, { allowFail = false, env = {} } = {}) {
   const r = spawnSync(args[0], args.slice(1), { encoding: "utf8", env: { ...process.env, ...env } });

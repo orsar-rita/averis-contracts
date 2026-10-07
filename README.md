@@ -8,7 +8,7 @@ resolution, plus the JavaScript integrations that talk to it.
 `initialize()` is only guarded by `AlreadyInitialized`: it accepts whoever
 calls it first, requiring only that caller's own signature on whatever `admin`
 address they pass in. A freshly-deployed, not-yet-initialized contract is
-therefore racing the real deployer — anyone watching for a new `OracleEscrow`
+therefore racing the real deployer — anyone watching for a new `Averis`
 WASM upload could front-run the legitimate
 `initialize(admin, token, platform, timeout_ledgers)` call and become `admin`
 themselves.
@@ -43,7 +43,7 @@ Every current integration with the contract goes through the JavaScript
 - demo-agent's scripts — scripted demo flows
 
 There is no equivalent for a Rust caller today. `soroban-sdk`'s
-`#[contractimpl]` macro already generates an `OracleEscrowClient` (the same
+`#[contractimpl]` macro already generates an `AverisClient` (the same
 type `test.rs`'s `client(f)` helper returns), which is most of what a
 standalone crate would need to publish.
 
@@ -69,7 +69,7 @@ native Python shapes (`Question` dataclass, `Status`/`ContractError` enums)
 so callers never touch raw XDR.
 
 ```python
-from oracle_escrow import Client, Status
+from averis import Client, Status
 
 client = Client(rpc_url, contract_id, network_passphrase)
 
@@ -88,11 +88,11 @@ interface changes (a new entry point, a new `ContractError` variant, a changed
 ```sh
 stellar contract build
 stellar contract bindings typescript \
-  --wasm target/wasm32-unknown-unknown/release/arbiter_contract.wasm \
+  --wasm target/wasm32-unknown-unknown/release/averis_contract.wasm \
   --output-dir bindings/typescript
 python bindings/python/generate.py \
-  --wasm target/wasm32-unknown-unknown/release/arbiter_contract.wasm \
-  --output bindings/python/oracle_escrow/_spec.py
+  --wasm target/wasm32-unknown-unknown/release/averis_contract.wasm \
+  --output bindings/python/averis/_spec.py
 ```
 
 The Python generator reads the same spec entries the CLI emits, so the two
@@ -101,7 +101,7 @@ interface changes.
 
 ## Standalone Rust client crate
 
-A thin crate wrapping the generated `OracleEscrowClient` with a stable public
+A thin crate wrapping the generated `AverisClient` with a stable public
 API and its own versioning, independent of the contract crate's own release
 cycle. Useful for a future Rust-based backend or CLI tool that wants typed
 calls instead of hand-built XDR the way the JS side currently must.
@@ -122,7 +122,7 @@ A minimal example equivalent to `test.rs`'s `setup()`/`client()` pattern,
 demonstrating `submit`/`resolve`/`refund` against a running contract:
 
 ```rust
-use oracle_escrow_client::{Client, Status};
+use averis_client::{Client, Status};
 
 // Equivalent to test.rs's setup(): deploy the contract and build a client.
 let client = Client::new(&env, &contract_id);
@@ -180,7 +180,7 @@ Measure it with the same command CI uses:
 
 ```sh
 stellar contract build
-ls -l target/wasm32-unknown-unknown/release/arbiter_contract.wasm
+ls -l target/wasm32-unknown-unknown/release/averis_contract.wasm
 ```
 
 **Baseline: 15.5KB** (optimized). The build must stay at or below this
@@ -196,8 +196,8 @@ the resulting hash matters (release, deployment, or verifying a deployed
 contract):
 
 ```sh
-docker build -t arbiter-contract-build .
-docker run --rm -v "$PWD:/src" arbiter-contract-build   # prints the WASM sha256
+docker build -t averis-contract-build .
+docker run --rm -v "$PWD:/src" averis-contract-build   # prints the WASM sha256
 # or, on a host with rustup + stellar-cli 27.1.0:
 ./scripts/reproducible-build.sh
 ```

@@ -2,7 +2,7 @@
 
 All notable changes to the **deployed contract interface** are documented
 here, from the perspective of a backend/app integrator calling into it
-(`arbiter-backend`, `arbiter-app`). Internal refactors, comments, tests, and
+(`averis-backend`, `averis-app`). Internal refactors, comments, tests, and
 CI changes that don't touch a method signature, argument shape, error code,
 or return type are not listed.
 
@@ -86,8 +86,8 @@ point:
 
 Errors 1–12 (`AlreadyInitialized` through `InvalidWorkerLists`).
 
-[Unreleased]: https://github.com/nayt9/arbiter-contract/compare/v0.4.0...HEAD
-[0.4.0]: https://github.com/nayt9/arbiter-contract/compare/v0.3.0...v0.4.0
-[0.3.0]: https://github.com/nayt9/arbiter-contract/compare/v0.2.0...v0.3.0
-[0.2.0]: https://github.com/nayt9/arbiter-contract/compare/v0.1.0...v0.2.0
-[0.1.0]: https://github.com/nayt9/arbiter-contract/releases/tag/v0.1.0
+[Unreleased]: https://github.com/nayt9/averis-contract/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/nayt9/averis-contract/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/nayt9/averis-contract/compare/v0.2.0...v0.3.0
+[0.2.0]: https://github.com/nayt9/averis-contract/compare/v0.1.0...v0.2.0
+[0.1.0]: https://github.com/nayt9/averis-contract/releases/tag/v0.1.0

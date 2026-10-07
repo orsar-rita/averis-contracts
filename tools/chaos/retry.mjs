@@ -1,10 +1,10 @@
 // Retry plumbing for the chaos driver (issue #121).
 //
-// The thing under test is arbiter-backend's retry.js: bounded exponential
+// The thing under test is averis-backend's retry.js: bounded exponential
 // backoff (2 attempts) with a single-digit-second per-attempt timeout. It
 // lives in the other repo, so there are two ways to get it here:
 //
-//   --retry-module ../arbiter-backend/src/retry.js   the real one (preferred)
+//   --retry-module ../averis-backend/src/retry.js   the real one (preferred)
 //   (nothing)                                        referenceRetry below,
 //                                                    written to the same spec
 //
@@ -53,7 +53,7 @@ export async function referenceRetry(fn, { attempts = 2, timeoutMs = 8000, baseD
   throw last;
 }
 
-/// Loads retry.js from arbiter-backend and adapts it to
+/// Loads retry.js from averis-backend and adapts it to
 /// `(fn, opts) => Promise`. retry.js's exact export isn't pinned by this
 /// repo, so this accepts the obvious shapes. If none fits, adapt it here:
 /// this function is the only place that knows about retry.js's API.

@@ -3,7 +3,7 @@
 //!
 //! sim/incentive/src/math.rs is compiled straight into this test module and
 //! every function in it is checked against the real contract: constants
-//! against lib.rs's, mul_bps() against OracleEscrow::mul_bps(), and
+//! against lib.rs's, mul_bps() against Averis::mul_bps(), and
 //! resolve()/slash() against an actual resolve() call in a Soroban Env —
 //! per-winner Owed credit, the platform's token delta, and each loser's
 //! warming/settled/unbonding buckets after the slash. If lib.rs's
@@ -34,7 +34,7 @@ fn constants_match_lib_rs() {
 proptest! {
     #[test]
     fn mul_bps_matches(value in 0i128..1_000_000_000_000_000_000_000_000_000i128, bps in 0i128..=10_000) {
-        prop_assert_eq!(sim_math::mul_bps(value, bps), OracleEscrow::mul_bps(value, bps));
+        prop_assert_eq!(sim_math::mul_bps(value, bps), Averis::mul_bps(value, bps));
     }
 }
 
@@ -64,10 +64,10 @@ impl Market {
         let token = env
             .register_stellar_asset_contract_v2(Address::generate(&env))
             .address();
-        let client_id = env.register(OracleEscrow, ());
+        let client_id = env.register(Averis, ());
         let admin = Address::generate(&env);
         let platform = Address::generate(&env);
-        OracleEscrowClient::new(&env, &client_id).initialize(&admin, &token, &platform, &17_280);
+        AverisClient::new(&env, &client_id).initialize(&admin, &token, &platform, &17_280);
         let payer = Address::generate(&env);
         token::StellarAssetClient::new(&env, &token).mint(&payer, &(i128::MAX / 4));
         Market {
@@ -79,8 +79,8 @@ impl Market {
         }
     }
 
-    fn client(&self) -> OracleEscrowClient<'_> {
-        OracleEscrowClient::new(&self.env, &self.client_id)
+    fn client(&self) -> AverisClient<'_> {
+        AverisClient::new(&self.env, &self.client_id)
     }
 
     fn mint(&self, to: &Address, amount: i128) {

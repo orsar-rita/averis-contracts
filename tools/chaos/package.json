@@ -1,5 +1,5 @@
 {
-  "name": "oracle-escrow-chaos",
+  "name": "averis-chaos",
   "private": true,
   "description": "RPC-failure chaos testing (issue #121). See docs/RPC_CHAOS_TESTING.md.",
   "type": "module",

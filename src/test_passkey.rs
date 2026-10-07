@@ -19,8 +19,9 @@
 
 extern crate std;
 
+use super::*;
 use crate::test::setup;
-use crate::*;
+use crate::ContractError;
 use soroban_sdk::{testutils::Address as _, Bytes};
 
 fn dummy_pubkey(env: &Env) -> BytesN<65> {
@@ -30,7 +31,7 @@ fn dummy_pubkey(env: &Env) -> BytesN<65> {
 #[test]
 fn register_passkey_stores_and_returns_the_pubkey() {
     let fx = setup();
-    let client = OracleEscrowClient::new(&fx.env, &fx.contract_id);
+    let client = AverisClient::new(&fx.env, &fx.contract_id);
     let worker = Address::generate(&fx.env);
     let pubkey = dummy_pubkey(&fx.env);
 
@@ -42,7 +43,7 @@ fn register_passkey_stores_and_returns_the_pubkey() {
 #[test]
 fn register_passkey_replaces_a_previously_registered_key() {
     let fx = setup();
-    let client = OracleEscrowClient::new(&fx.env, &fx.contract_id);
+    let client = AverisClient::new(&fx.env, &fx.contract_id);
     let worker = Address::generate(&fx.env);
 
     client.register_passkey(&worker, &dummy_pubkey(&fx.env));
@@ -54,7 +55,7 @@ fn register_passkey_replaces_a_previously_registered_key() {
 #[test]
 fn verify_passkey_auth_fails_when_nothing_is_registered() {
     let fx = setup();
-    let client = OracleEscrowClient::new(&fx.env, &fx.contract_id);
+    let client = AverisClient::new(&fx.env, &fx.contract_id);
     let worker = Address::generate(&fx.env);
     let message = Bytes::from_array(&fx.env, &[1, 2, 3]);
     let bogus_sig = BytesN::from_array(&fx.env, &[0u8; 64]);

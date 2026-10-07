@@ -42,7 +42,7 @@ impl Params {
     };
 }
 
-/// lib.rs `OracleEscrow::mul_bps`: overflow-safe `value * bps / 10_000`,
+/// lib.rs `Averis::mul_bps`: overflow-safe `value * bps / 10_000`,
 /// truncating toward zero exactly like i128 division in the contract.
 pub fn mul_bps(value: i128, bps: i128) -> i128 {
     (value / BPS_DENOM) * bps + (value % BPS_DENOM) * bps / BPS_DENOM
@@ -70,7 +70,7 @@ impl Stake {
     }
 }
 
-/// lib.rs `OracleEscrow::slash`, minus storage: takes
+/// lib.rs `Averis::slash`, minus storage: takes
 /// `min(slash_bps of slashable, cap, slashable)`, draining warming, then
 /// settled, then unbonding. Returns the amount taken.
 pub fn slash(info: &mut Stake, slash_bps: i128, cap: i128) -> i128 {
@@ -103,16 +103,17 @@ pub struct Settlement {
     pub dust: i128,
     /// Sum of every losing worker's slash.
     pub total_slashed: i128,
+    pub platform_take_computed: i128,
 }
 
 impl Settlement {
     /// The single token transfer resolve() makes to the platform.
     pub fn platform_take(&self) -> i128 {
-        self.fee + self.dust + self.total_slashed
+        self.platform_take_computed
     }
 }
 
-/// lib.rs `OracleEscrow::resolve`'s money movement, minus storage/events.
+/// lib.rs `Averis::resolve`'s money movement, minus storage/events.
 /// `losers` are slashed in place, in order, exactly as resolve() iterates
 /// `losing_workers`. Panics on `winners == 0`, which resolve() rejects
 /// with NoWorkers before reaching any of this.
@@ -121,18 +122,31 @@ pub fn resolve(amount: i128, winners: u32, losers: &mut [Stake], p: Params) -> S
     let fee = mul_bps(amount, p.fee_bps);
     let pool = amount - fee;
     let n = winners as i128;
-    let share = pool / n;
+    let mut share = pool / n;
     let dust = pool - share * n;
 
     let cap = mul_bps(amount, p.slash_cap_bps_of_amount);
+    let mut platform_take = fee + dust;
     let mut total_slashed = 0i128;
+    let mut slash_redist_per_worker = 0i128;
     for loser in losers.iter_mut() {
-        total_slashed += slash(loser, p.slash_bps, cap);
+        let slashed = slash(loser, p.slash_bps, cap);
+        if slashed > 0 {
+            let worker_portion = mul_bps(slashed, 5000);
+            let platform_portion = slashed - worker_portion;
+            let redist_share = worker_portion / n;
+            let redist_dust = worker_portion - redist_share * n;
+            slash_redist_per_worker += redist_share;
+            platform_take += platform_portion + redist_dust;
+            total_slashed += slashed;
+        }
     }
+    share += slash_redist_per_worker;
     Settlement {
         fee,
         share,
         dust,
         total_slashed,
+        platform_take_computed: platform_take,
     }
 }

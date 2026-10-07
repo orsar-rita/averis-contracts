@@ -30,6 +30,7 @@
 extern crate std;
 
 use super::*;
+use crate::ContractError;
 use crate::test_wasm;
 use soroban_sdk::testutils::{Address as _, EnvTestConfig};
 use std::{println, time::Instant, vec::Vec as StdVec};
@@ -182,7 +183,7 @@ fn market() -> Market {
         .register_stellar_asset_contract_v2(Address::generate(&env))
         .address();
     let id = env.register(wasm.as_slice(), ());
-    let client = OracleEscrowClient::new(&env, &id);
+    let client = AverisClient::new(&env, &id);
     // Longest allowed window, so nothing times out mid-run.
     client.initialize(
         &Address::generate(&env),
@@ -243,7 +244,7 @@ fn print_report(phases: &[Phase], limits: &LedgerLimits) {
 #[ignore]
 fn bench_load_submit_all_then_resolve_all() {
     let m = market();
-    let c = OracleEscrowClient::new(&m.env, &m.id);
+    let c = AverisClient::new(&m.env, &m.id);
     let n = questions();
     let pool = m.workers.len();
     let limits = mainnet_ledger_limits();
@@ -297,7 +298,7 @@ fn bench_load_submit_all_then_resolve_all() {
 fn bench_load_steady_state_window() {
     const IN_FLIGHT: u64 = 100;
     let m = market();
-    let c = OracleEscrowClient::new(&m.env, &m.id);
+    let c = AverisClient::new(&m.env, &m.id);
     let n = questions();
     let pool = m.workers.len();
     let limits = mainnet_ledger_limits();
@@ -337,7 +338,7 @@ fn bench_load_steady_state_window() {
 #[ignore]
 fn bench_load_id_collision_cost() {
     let m = market();
-    let c = OracleEscrowClient::new(&m.env, &m.id);
+    let c = AverisClient::new(&m.env, &m.id);
     m.env.cost_estimate().budget().reset_unlimited();
     c.submit(&m.payer, &1, &AMOUNT);
     let ok = last_call_cost(&m.env);

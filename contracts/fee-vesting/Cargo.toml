@@ -2,7 +2,7 @@
 name = "fee-vesting"
 version = "0.1.0"
 edition = "2021"
-description = "Cliff-then-linear vesting treasury for OracleEscrow platform fee revenue"
+description = "Cliff-then-linear vesting treasury for Averis platform fee revenue"
 license = "MIT"
 publish = false
 

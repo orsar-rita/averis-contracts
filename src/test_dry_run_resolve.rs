@@ -4,7 +4,8 @@
 
 use super::*;
 use crate::test::{client, setup, token_client, AMOUNT};
-use soroban_sdk::{testutils::Address as _, Address, Vec};
+use crate::ContractError;
+use soroban_sdk::{testutils::Address as _, Address, BytesN, Vec};
 
 #[test]
 fn preview_resolve_does_not_mutate_any_storage() {

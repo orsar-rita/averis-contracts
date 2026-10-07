@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Moves every Pending question from one oracle-escrow instance to another.
+// Moves every Pending question from one averis instance to another.
 // See docs/migration.md for the full procedure and the safety argument.
 //
 //   node tools/migrate/migrate.mjs plan   --source C... --target C... --admin <key> [--network testnet]
